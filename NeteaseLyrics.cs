@@ -33,12 +33,26 @@ namespace MusicBeePlugin
             about.MinInterfaceVersion = MinInterfaceVersion;
             about.MinApiRevision = MinApiRevision;
             about.ReceiveNotifications = ReceiveNotificationFlags.DownloadEvents;
-            about.ConfigurationPanelHeight = 0;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+            about.ConfigurationPanelHeight = 50;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+            
             return about;
         }
 
+        private CheckBox noTranslate = new CheckBox();
+        private string _noTranslateFilename = "netease_notranslate";
+
         public bool Configure(IntPtr panelHandle)
         {
+            if (panelHandle != IntPtr.Zero)
+            {
+                Panel configPanel = (Panel)Control.FromHandle(panelHandle);
+                configPanel.Controls.Clear();
+                noTranslate.Text = "Don't process translate";
+                noTranslate.AutoSize = true;
+                noTranslate.Location = new Point(0, 0);
+                noTranslate.Checked = File.Exists(Path.Combine(mbApiInterface.Setting_GetPersistentStoragePath(), _noTranslateFilename));
+                configPanel.Controls.Add(noTranslate);
+            }
             return false;
         }
        
@@ -46,6 +60,15 @@ namespace MusicBeePlugin
         // its up to you to figure out whether anything has changed and needs updating
         public void SaveSettings()
         {
+            string dataPath = mbApiInterface.Setting_GetPersistentStoragePath();
+            string p = Path.Combine(dataPath, _noTranslateFilename);
+            if (noTranslate.Checked)
+            {
+                File.Create(p);
+            } else
+            {
+                if (File.Exists(p)) File.Delete(p);
+            }
         }
 
         // MusicBee is closing the plugin (plugin is being disabled by user or MusicBee is shutting down)
@@ -56,6 +79,9 @@ namespace MusicBeePlugin
         // uninstall this plugin - clean up any persisted files
         public void Uninstall()
         {
+            string dataPath = mbApiInterface.Setting_GetPersistentStoragePath();
+            string p = Path.Combine(dataPath, _noTranslateFilename);
+            if (File.Exists(p)) File.Delete(p);
         }
 
         private const string PROVIDER_NAME = "Netease Cloud Music";
@@ -63,13 +89,50 @@ namespace MusicBeePlugin
             bool synchronisedPreferred, string provider)
         {
             if (provider != PROVIDER_NAME) return null;
+            var isNoTranslate = File.Exists(Path.Combine(mbApiInterface.Setting_GetPersistentStoragePath(), _noTranslateFilename));
+
+            LyricResult lyricResult;
+            try
+            {
+                var searchResult = Query(trackTitle + " " + artist).result.songs.Where(rst =>
+                        string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
+                            StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (searchResult.Count <= 0)
+                {
+                    searchResult = Query(trackTitle).result.songs.Where(rst =>
+                        string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
+                            StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (searchResult.Count <= 0)
+                    {
+                        return null;
+                    }
+                }
+
+                lyricResult = RequestLyric(searchResult.First().id);
+            }
+            catch (Exception e)
+            {
+                throw e;
+            }
+            
+            if (lyricResult.lrc?.lyric == null) return null;
+            if (lyricResult.tlyric?.lyric == null || isNoTranslate)
+                return lyricResult.lrc.lyric; // No need to process translation
+
+            // translation
+            return LyricProcessor.injectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
+        }
+
+        private SearchResult Query(string s)
+        {
             using (var client = new WebClient())
             {
                 client.Headers.Add(HttpRequestHeader.Referer, "http://music.163.com/");
                 client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
 
                 var searchPost = new NameValueCollection();
-                searchPost["s"] = trackTitle + " " + artist;
+                searchPost["s"] = s;
                 searchPost["limit"] = "1";
                 searchPost["offset"] = "0";
                 searchPost["type"] = "1";
@@ -77,16 +140,26 @@ namespace MusicBeePlugin
                 if (searchResult.code != 200) return null;
                 if (searchResult.result.songCount <= 0) return null;
 
-                var id = searchResult.result.songs.First().id;
+                return searchResult;
+            }
+        }
+
+        private LyricResult RequestLyric(int id)
+        {
+            using (var client = new WebClient())
+            {
+                client.Headers.Add(HttpRequestHeader.Referer, "http://music.163.com/");
+                client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
                 var lyricResult = JsonConvert.DeserializeObject<LyricResult>(Encoding.UTF8.GetString(client.DownloadData("http://music.163.com/api/song/lyric?os=pc&id=" + id + "&lv=-1&kv=-1&tv=-1")));
                 if (lyricResult.code != 200) return null;
-                if (lyricResult.lrc?.lyric == null) return null;
-                if (lyricResult.tlyric?.lyric == null)
-                    return lyricResult.lrc.lyric; // No need to process translation
-
-                // translation
-                return LyricProcessor.injectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
+                return lyricResult;
             }
+        }
+
+        private string GetFirstSeq(string s)
+        {
+            var pos = s.IndexOf(' ');
+            return s.Trim().Substring(0, pos == -1 ? s.Length : pos);
         }
 
         public string[] GetProviders()
