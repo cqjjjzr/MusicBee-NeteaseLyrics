@@ -8,6 +8,8 @@ Alalalala(Translation)
 is wrapped to: Blalalala/Alalalalala  
 etc..
 
+But if you don't want this function you can disable it in plugin settings.
+
 ## Usage
 To use this plugin, download it from links below:  
 For users who is not in China:  
@@ -18,7 +20,7 @@ Extract 2 dlls to the `Plugins` folder of your MusicBee installation folder,    
 And adjust the retrieving provider priority of "Netease Cloud Music" in the Tags(2) Tab.  
 
 ## For non-Chinese users 
-And this plugin is also useful for people who aren't from China as Netease CloudMusic also has bunch of songs in other languages.(but you may get translation you don't like. in the coming version probably I'll add option to disable that.)
+And this plugin is also useful for people who aren't from China as Netease CloudMusic also has bunch of songs in other languages. You can disable the translation in the plugin settings.
 
 # 网易云音乐歌词
   
@@ -29,5 +31,6 @@ And this plugin is also useful for people who aren't from China as Netease Cloud
 阿啦啦啦啦啦（翻译）  
 会被合并为：巴拉巴拉巴拉巴/阿啦啦啦啦啦  
 
+如果不想要这个功能可以在设置里面的插件设置中关闭。
 ## 使用
 从[度盘](https://pan.baidu.com/s/1mj4pUGC)下载并放在MusicBee安装目录的`Plugins`子目录下，并在首选项的 `插件` 中启用插件，在 `标签 (2)` 标签页调整歌词的提供者优先级。
