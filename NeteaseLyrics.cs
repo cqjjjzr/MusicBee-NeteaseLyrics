@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
+using System.Text.RegularExpressions;
 
 namespace MusicBeePlugin
 {
@@ -94,22 +95,9 @@ namespace MusicBeePlugin
             LyricResult lyricResult;
             try
             {
-                var searchResult = Query(trackTitle + " " + artist).result.songs.Where(rst =>
-                        string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
-                            StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                if (searchResult.Count <= 0)
-                {
-                    searchResult = Query(trackTitle).result.songs.Where(rst =>
-                        string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
-                            StringComparison.OrdinalIgnoreCase)).ToList();
-                    if (searchResult.Count <= 0)
-                    {
-                        return null;
-                    }
-                }
-
-                lyricResult = RequestLyric(searchResult.First().id);
+                var searchResult = QueryWithFeatRemoved(trackTitle, artist);
+                if (searchResult == null) return null;
+                lyricResult = RequestLyric(searchResult.id);
             }
             catch (Exception e)
             {
@@ -122,6 +110,34 @@ namespace MusicBeePlugin
 
             // translation
             return LyricProcessor.injectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
+        }
+
+        private SearchResultSong QueryWithFeatRemoved(string trackTitle, string artist)
+        {
+            SearchResultSong ret;
+            ret = Query(trackTitle, artist);
+            if (ret != null) return ret;
+
+            ret = Query(RemoveLeadingNumber(RemoveFeat(trackTitle)), artist);
+            if (ret != null) return ret;
+
+            return null;
+        }
+
+        private SearchResultSong Query(string trackTitle, string artist)
+        {
+            List<SearchResultSong> ret;
+            ret = Query(trackTitle + " " + artist).result.songs.Where(rst =>
+                    string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
+                        StringComparison.OrdinalIgnoreCase)).ToList();
+            if (ret.Count > 0) return ret[0];
+
+            ret = Query(trackTitle).result.songs.Where(rst =>
+                string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
+                    StringComparison.OrdinalIgnoreCase)).ToList();
+            if (ret.Count > 0) return ret[0];
+
+            return null;
         }
 
         private SearchResult Query(string s)
@@ -158,8 +174,19 @@ namespace MusicBeePlugin
 
         private string GetFirstSeq(string s)
         {
+            s = s.Replace("\u00A0", " ");
             var pos = s.IndexOf(' ');
-            return s.Trim().Substring(0, pos == -1 ? s.Length : pos);
+            return s.Substring(0, pos == -1 ? s.Length : pos).Trim();
+        }
+		
+		private string RemoveFeat(string name)
+        {
+			return Regex.Replace(name, "\\s*\\(feat.+\\)", "", RegexOptions.IgnoreCase);
+		}
+
+        private string RemoveLeadingNumber(string name)
+        {
+            return Regex.Replace(name, "^\\d+\\.?\\s*", "", RegexOptions.IgnoreCase);
         }
 
         public string[] GetProviders()
