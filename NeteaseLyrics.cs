@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Runtime.InteropServices;
 using System.Drawing;
 using System.Windows.Forms;
-using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Net;
 using System.IO;
@@ -15,45 +13,47 @@ namespace MusicBeePlugin
 {
     public partial class Plugin
     {
-        private MusicBeeApiInterface mbApiInterface;
-        private PluginInfo about = new PluginInfo();
+        private MusicBeeApiInterface _mbApiInterface;
+        private readonly PluginInfo _about = new PluginInfo();
 
         public PluginInfo Initialise(IntPtr apiInterfacePtr)
         {
-            mbApiInterface = new MusicBeeApiInterface();
-            mbApiInterface.Initialise(apiInterfacePtr);
-            about.PluginInfoVersion = PluginInfoVersion;
-            about.Name = "Netease Lyrics";
-            about.Description = "A plugin to retrieve lyrics from Netease Cloud Music.";
-            about.Author = "Charlie Jiang";
-            about.TargetApplication = "";   // current only applies to artwork, lyrics or instant messenger name that appears in the provider drop down selector or target Instant Messenger
-            about.Type = PluginType.LyricsRetrieval;
-            about.VersionMajor = 1;  // your plugin version
-            about.VersionMinor = 0;
-            about.Revision = 1;
-            about.MinInterfaceVersion = MinInterfaceVersion;
-            about.MinApiRevision = MinApiRevision;
-            about.ReceiveNotifications = ReceiveNotificationFlags.DownloadEvents;
-            about.ConfigurationPanelHeight = 50;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+            _mbApiInterface = new MusicBeeApiInterface();
+            _mbApiInterface.Initialise(apiInterfacePtr);
+            _about.PluginInfoVersion = PluginInfoVersion;
+            _about.Name = "Netease Lyrics";
+            _about.Description = "A plugin to retrieve lyrics from Netease Cloud Music.(从网易云音乐获取歌词的插件。)";
+            _about.Author = "Charlie Jiang";
+            _about.TargetApplication = "";   // current only applies to artwork, lyrics or instant messenger name that appears in the provider drop down selector or target Instant Messenger
+            _about.Type = PluginType.LyricsRetrieval;
+            _about.VersionMajor = 1;  // your plugin version
+            _about.VersionMinor = 0;
+            _about.Revision = 1;
+            _about.MinInterfaceVersion = MinInterfaceVersion;
+            _about.MinApiRevision = MinApiRevision;
+            _about.ReceiveNotifications = ReceiveNotificationFlags.DownloadEvents;
+            _about.ConfigurationPanelHeight = 50;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
             
-            return about;
+            return _about;
         }
 
-        private CheckBox noTranslate = new CheckBox();
+        private CheckBox noTranslate;
         private string _noTranslateFilename = "netease_notranslate";
 
         public bool Configure(IntPtr panelHandle)
         {
-            if (panelHandle != IntPtr.Zero)
+            if (panelHandle == IntPtr.Zero) return false;
+            var configPanel = (Panel)Control.FromHandle(panelHandle);
+            configPanel.Controls.Clear();
+            noTranslate = new CheckBox
             {
-                Panel configPanel = (Panel)Control.FromHandle(panelHandle);
-                configPanel.Controls.Clear();
-                noTranslate.Text = "Don't process translate";
-                noTranslate.AutoSize = true;
-                noTranslate.Location = new Point(0, 0);
-                noTranslate.Checked = File.Exists(Path.Combine(mbApiInterface.Setting_GetPersistentStoragePath(), _noTranslateFilename));
-                configPanel.Controls.Add(noTranslate);
-            }
+                Text = "Don't process translate(不处理翻译)",
+                AutoSize = true,
+                Location = new Point(0, 0),
+                Checked = File.Exists(Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(),
+                    _noTranslateFilename))
+            };
+            configPanel.Controls.Add(noTranslate);
             return false;
         }
        
@@ -61,8 +61,8 @@ namespace MusicBeePlugin
         // its up to you to figure out whether anything has changed and needs updating
         public void SaveSettings()
         {
-            string dataPath = mbApiInterface.Setting_GetPersistentStoragePath();
-            string p = Path.Combine(dataPath, _noTranslateFilename);
+            var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
+            var p = Path.Combine(dataPath, _noTranslateFilename);
             if (noTranslate.Checked)
             {
                 File.Create(p);
@@ -80,30 +80,22 @@ namespace MusicBeePlugin
         // uninstall this plugin - clean up any persisted files
         public void Uninstall()
         {
-            string dataPath = mbApiInterface.Setting_GetPersistentStoragePath();
-            string p = Path.Combine(dataPath, _noTranslateFilename);
+            var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
+            var p = Path.Combine(dataPath, _noTranslateFilename);
             if (File.Exists(p)) File.Delete(p);
         }
 
-        private const string PROVIDER_NAME = "Netease Cloud Music";
+        private const string ProviderName = "Netease Cloud Music(网易云音乐)";
         public string RetrieveLyrics(string sourceFileUrl, string artist, string trackTitle, string album,
             bool synchronisedPreferred, string provider)
         {
-            if (provider != PROVIDER_NAME) return null;
-            var isNoTranslate = File.Exists(Path.Combine(mbApiInterface.Setting_GetPersistentStoragePath(), _noTranslateFilename));
+            if (provider != ProviderName) return null;
+            var isNoTranslate = File.Exists(Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), _noTranslateFilename));
 
-            LyricResult lyricResult;
-            try
-            {
-                var searchResult = QueryWithFeatRemoved(trackTitle, artist);
-                if (searchResult == null) return null;
-                lyricResult = RequestLyric(searchResult.id);
-            }
-            catch (Exception e)
-            {
-                throw e;
-            }
-            
+            var searchResult = QueryWithFeatRemoved(trackTitle, artist);
+            if (searchResult == null) return null;
+            var lyricResult = RequestLyric(searchResult.id);
+
             if (lyricResult.lrc?.lyric == null) return null;
             if (lyricResult.tlyric?.lyric == null || isNoTranslate)
                 return lyricResult.lrc.lyric; // No need to process translation
@@ -114,49 +106,43 @@ namespace MusicBeePlugin
 
         private SearchResultSong QueryWithFeatRemoved(string trackTitle, string artist)
         {
-            SearchResultSong ret;
-            ret = Query(trackTitle, artist);
+            var ret = Query(trackTitle, artist);
             if (ret != null) return ret;
 
             ret = Query(RemoveLeadingNumber(RemoveFeat(trackTitle)), artist);
-            if (ret != null) return ret;
-
-            return null;
+            return ret;
         }
 
         private SearchResultSong Query(string trackTitle, string artist)
         {
-            List<SearchResultSong> ret;
-            ret = Query(trackTitle + " " + artist).result.songs.Where(rst =>
-                    string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
-                        StringComparison.OrdinalIgnoreCase)).ToList();
+            var ret = Query(trackTitle + " " + artist).result.songs.Where(rst =>
+                string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
+                    StringComparison.OrdinalIgnoreCase)).ToList();
             if (ret.Count > 0) return ret[0];
 
             ret = Query(trackTitle).result.songs.Where(rst =>
                 string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
                     StringComparison.OrdinalIgnoreCase)).ToList();
-            if (ret.Count > 0) return ret[0];
-
-            return null;
+            return ret.Count > 0 ? ret[0] : null;
         }
 
-        private SearchResult Query(string s)
+        private static SearchResult Query(string s)
         {
             using (var client = new WebClient())
             {
                 client.Headers.Add(HttpRequestHeader.Referer, "http://music.163.com/");
                 client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
 
-                var searchPost = new NameValueCollection();
-                searchPost["s"] = s;
-                searchPost["limit"] = "1";
-                searchPost["offset"] = "0";
-                searchPost["type"] = "1";
+                var searchPost = new NameValueCollection
+                {
+                    ["s"] = s,
+                    ["limit"] = "1",
+                    ["offset"] = "0",
+                    ["type"] = "1"
+                };
                 var searchResult = JsonConvert.DeserializeObject<SearchResult>(Encoding.UTF8.GetString(client.UploadValues("http://music.163.com/api/search/pc", searchPost)));
                 if (searchResult.code != 200) return null;
-                if (searchResult.result.songCount <= 0) return null;
-
-                return searchResult;
+                return searchResult.result.songCount <= 0 ? null : searchResult;
             }
         }
 
@@ -191,7 +177,7 @@ namespace MusicBeePlugin
 
         public string[] GetProviders()
         {
-            return new []{PROVIDER_NAME};
+            return new []{ProviderName};
         }
         public void ReceiveNotification(string sourceFileUrl, NotificationType type)
         {
