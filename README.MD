@@ -13,7 +13,7 @@ But if you don't want this function you can disable it in plugin settings.
 ## Usage
 To use this plugin, download it from links below:  
 For users who is not in China:  
-[OneDrive](https://1drv.ms/u/s!AicHZ6DLvCtX5ll8D9Ff0_1Xyq-V)  
+[OneDrive](https://1drv.ms/f/s!AicHZ6DLvCtX6Qp6KQfEppoQtjLG)  
 For users who is in China:  
 [BaiduYun](https://pan.baidu.com/s/1mj4pUGC)  
 Install(via "Add plugin" button) and enable it in the `Plugin` tab in the preferences.  
