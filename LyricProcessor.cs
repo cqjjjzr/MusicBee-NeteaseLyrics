@@ -1,17 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace MusicBeePlugin
 {
+    [SuppressMessage("ReSharper", "InconsistentNaming")]
     static class LyricProcessor
     {
-        public static string injectTranslation(string originalLrc, string translationLrc)
+        public static string InjectTranslation(string originalLrc, string translationLrc)
         {
-            var originalEntries = parse(originalLrc);
-            var translationEntries = parse(translationLrc);
+            var originalEntries = Parse(originalLrc);
+            var translationEntries = Parse(translationLrc);
             foreach (var originalEntry in originalEntries)
             {
                 var translationEntry = translationEntries.FirstOrDefault(entry => entry.timeLabel == originalEntry.timeLabel);
@@ -22,29 +22,25 @@ namespace MusicBeePlugin
             return string.Join("\n", originalEntries);
         }
 
-        private static List<LyricEntry> parse(string lrc)
+        private static List<LyricEntry> Parse(string lrc)
         {
-            var entries = new List<LyricEntry>();
-            foreach (var line in lrc.Split('\n'))
-            {
-                if (string.IsNullOrWhiteSpace(lrc)) continue;
-                var matches = Regex.Matches(line, "((\\[.+?])+)(.+)");
-                if (matches.Count < 1) continue;
-
-                var match = matches[0];
-                if (match.Groups.Count < 4) continue;
-                var content = match.Groups[3].Value;
-                
-                foreach (Capture capture in match.Groups[1].Captures)
-                {
-                    entries.Add(new LyricEntry(capture.Value, content));
-                }
-            }
-            return entries;
+            return (
+                from line in lrc.Split('\n')
+                where !string.IsNullOrWhiteSpace(line)
+                select Regex.Matches(line, "((\\[.+?])+)(.+)")
+                into matches
+                where matches.Count >= 1
+                select matches[0]
+                into match
+                where match.Groups.Count >= 3
+                let content = match.Groups[3].Value
+                from Capture capture in match.Groups[1].Captures
+                select new LyricEntry(capture.Value, content)).ToList();
         }
     }
 
-    class LyricEntry
+    [SuppressMessage("ReSharper", "InconsistentNaming")]
+    internal class LyricEntry
     {
         public string timeLabel;
         public string content;

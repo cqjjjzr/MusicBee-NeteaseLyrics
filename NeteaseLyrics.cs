@@ -5,6 +5,7 @@ using System.Collections.Specialized;
 using System.Net;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using Newtonsoft.Json;
 using System.Text.RegularExpressions;
@@ -18,6 +19,8 @@ namespace MusicBeePlugin
 
         public PluginInfo Initialise(IntPtr apiInterfacePtr)
         {
+            var versions = Assembly.GetExecutingAssembly().GetName().Version.ToString().Split('.');
+
             _mbApiInterface = new MusicBeeApiInterface();
             _mbApiInterface.Initialise(apiInterfacePtr);
             _about.PluginInfoVersion = PluginInfoVersion;
@@ -26,9 +29,9 @@ namespace MusicBeePlugin
             _about.Author = "Charlie Jiang";
             _about.TargetApplication = "";   // current only applies to artwork, lyrics or instant messenger name that appears in the provider drop down selector or target Instant Messenger
             _about.Type = PluginType.LyricsRetrieval;
-            _about.VersionMajor = 1;  // your plugin version
-            _about.VersionMinor = 0;
-            _about.Revision = 1;
+            _about.VersionMajor = short.Parse(versions[0]);  // your plugin version
+            _about.VersionMinor = short.Parse(versions[1]);
+            _about.Revision = short.Parse(versions[2]);
             _about.MinInterfaceVersion = MinInterfaceVersion;
             _about.MinApiRevision = MinApiRevision;
             _about.ReceiveNotifications = ReceiveNotificationFlags.DownloadEvents;
@@ -37,23 +40,23 @@ namespace MusicBeePlugin
             return _about;
         }
 
-        private CheckBox noTranslate;
-        private string _noTranslateFilename = "netease_notranslate";
+        private CheckBox _noTranslate;
+        private const string NoTranslateFilename = "netease_notranslate";
 
         public bool Configure(IntPtr panelHandle)
         {
             if (panelHandle == IntPtr.Zero) return false;
             var configPanel = (Panel)Control.FromHandle(panelHandle);
             configPanel.Controls.Clear();
-            noTranslate = new CheckBox
+            _noTranslate = new CheckBox
             {
                 Text = "Don't process translate(不处理翻译)",
                 AutoSize = true,
                 Location = new Point(0, 0),
                 Checked = File.Exists(Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(),
-                    _noTranslateFilename))
+                    NoTranslateFilename))
             };
-            configPanel.Controls.Add(noTranslate);
+            configPanel.Controls.Add(_noTranslate);
             return false;
         }
        
@@ -62,8 +65,8 @@ namespace MusicBeePlugin
         public void SaveSettings()
         {
             var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
-            var p = Path.Combine(dataPath, _noTranslateFilename);
-            if (noTranslate.Checked)
+            var p = Path.Combine(dataPath, NoTranslateFilename);
+            if (_noTranslate.Checked)
             {
                 File.Create(p);
             } else
@@ -81,7 +84,7 @@ namespace MusicBeePlugin
         public void Uninstall()
         {
             var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
-            var p = Path.Combine(dataPath, _noTranslateFilename);
+            var p = Path.Combine(dataPath, NoTranslateFilename);
             if (File.Exists(p)) File.Delete(p);
         }
 
@@ -90,7 +93,7 @@ namespace MusicBeePlugin
             bool synchronisedPreferred, string provider)
         {
             if (provider != ProviderName) return null;
-            var isNoTranslate = File.Exists(Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), _noTranslateFilename));
+            var isNoTranslate = File.Exists(Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), NoTranslateFilename));
 
             var searchResult = QueryWithFeatRemoved(trackTitle, artist);
             if (searchResult == null) return null;
@@ -101,7 +104,7 @@ namespace MusicBeePlugin
                 return lyricResult.lrc.lyric; // No need to process translation
 
             // translation
-            return LyricProcessor.injectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
+            return LyricProcessor.InjectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
         }
 
         private SearchResultSong QueryWithFeatRemoved(string trackTitle, string artist)
@@ -113,15 +116,15 @@ namespace MusicBeePlugin
             return ret;
         }
 
-        private SearchResultSong Query(string trackTitle, string artist)
+        private static SearchResultSong Query(string trackTitle, string artist)
         {
             var ret = Query(trackTitle + " " + artist).result.songs.Where(rst =>
-                string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
+                string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
                     StringComparison.OrdinalIgnoreCase)).ToList();
             if (ret.Count > 0) return ret[0];
 
             ret = Query(trackTitle).result.songs.Where(rst =>
-                string.Equals(GetFirstSeq(rst.name), GetFirstSeq(trackTitle),
+                string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
                     StringComparison.OrdinalIgnoreCase)).ToList();
             return ret.Count > 0 ? ret[0] : null;
         }
@@ -146,31 +149,30 @@ namespace MusicBeePlugin
             }
         }
 
-        private LyricResult RequestLyric(int id)
+        private static LyricResult RequestLyric(int id)
         {
             using (var client = new WebClient())
             {
                 client.Headers.Add(HttpRequestHeader.Referer, "http://music.163.com/");
                 client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
                 var lyricResult = JsonConvert.DeserializeObject<LyricResult>(Encoding.UTF8.GetString(client.DownloadData("http://music.163.com/api/song/lyric?os=pc&id=" + id + "&lv=-1&kv=-1&tv=-1")));
-                if (lyricResult.code != 200) return null;
-                return lyricResult;
+                return lyricResult.code != 200 ? null : lyricResult;
             }
         }
 
-        private string GetFirstSeq(string s)
+        private static string GetFirstSeq(string s)
         {
             s = s.Replace("\u00A0", " ");
             var pos = s.IndexOf(' ');
             return s.Substring(0, pos == -1 ? s.Length : pos).Trim();
         }
-		
-		private string RemoveFeat(string name)
+
+        public string RemoveFeat(string name)
         {
 			return Regex.Replace(name, "\\s*\\(feat.+\\)", "", RegexOptions.IgnoreCase);
 		}
 
-        private string RemoveLeadingNumber(string name)
+        public static string RemoveLeadingNumber(string name)
         {
             return Regex.Replace(name, "^\\d+\\.?\\s*", "", RegexOptions.IgnoreCase);
         }
