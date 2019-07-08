@@ -139,7 +139,7 @@ namespace MusicBeePlugin
                 var searchPost = new NameValueCollection
                 {
                     ["s"] = s,
-                    ["limit"] = "1",
+                    ["limit"] = "6",
                     ["offset"] = "0",
                     ["type"] = "1"
                 };
