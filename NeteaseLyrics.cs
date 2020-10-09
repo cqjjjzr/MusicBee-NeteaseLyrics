@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Collections.Specialized;
@@ -12,6 +12,18 @@ using System.Text.RegularExpressions;
 
 namespace MusicBeePlugin
 {
+    public class NeteaseConfig
+    {
+        public enum OutputFormat : int
+        {
+            Original = 0,
+            Both = 1,
+            Translation = 2
+        }
+
+        public OutputFormat format { get; set; } = OutputFormat.Both;
+    }
+
     public partial class Plugin
     {
         private MusicBeeApiInterface _mbApiInterface;
@@ -36,11 +48,34 @@ namespace MusicBeePlugin
             _about.MinApiRevision = MinApiRevision;
             _about.ReceiveNotifications = ReceiveNotificationFlags.DownloadEvents;
             _about.ConfigurationPanelHeight = 50;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
-            
+
+            string noTranslatePath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), NoTranslateFilename);
+            string configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
+            if (File.Exists(configPath))
+            {
+                try
+                {
+                    _config = JsonConvert.DeserializeObject<NeteaseConfig>(File.ReadAllText(configPath, Encoding.UTF8));
+                }
+                catch (Exception ex)
+                {
+                    _mbApiInterface.MB_Trace("[NeteaseMusic] Failed to load config" + ex);
+                }
+            }
+            if (File.Exists(noTranslatePath))
+            {
+                File.Delete(noTranslatePath);
+                _config.format = NeteaseConfig.OutputFormat.Original;
+                SaveSettingsInternal();
+            }
+
             return _about;
         }
 
         private CheckBox _noTranslate;
+        private NeteaseConfig _config = new NeteaseConfig();
+        private ComboBox _formatComboBox = new ComboBox();
+        private const string ConfigFilename = "netease_config";
         private const string NoTranslateFilename = "netease_notranslate";
 
         public bool Configure(IntPtr panelHandle)
@@ -48,31 +83,35 @@ namespace MusicBeePlugin
             if (panelHandle == IntPtr.Zero) return false;
             var configPanel = (Panel)Control.FromHandle(panelHandle);
             configPanel.Controls.Clear();
-            _noTranslate = new CheckBox
-            {
-                Text = "Don't process translate(不处理翻译)",
-                AutoSize = true,
-                Location = new Point(0, 0),
-                Checked = File.Exists(Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(),
-                    NoTranslateFilename))
-            };
-            configPanel.Controls.Add(_noTranslate);
+
+            _formatComboBox = new ComboBox();
+            _formatComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            _formatComboBox.Items.Add("Only original text");
+            _formatComboBox.Items.Add("Original text and translation");
+            _formatComboBox.Items.Add("Only translation");
+            _formatComboBox.AutoSize = true;
+            _formatComboBox.Location = new Point(0, 0);
+            _formatComboBox.SelectedIndex = (int)_config.format;
+            configPanel.Controls.Add(_formatComboBox);
             return false;
         }
-       
+
         // called by MusicBee when the user clicks Apply or Save in the MusicBee Preferences screen.
         // its up to you to figure out whether anything has changed and needs updating
         public void SaveSettings()
         {
-            var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
-            var p = Path.Combine(dataPath, NoTranslateFilename);
-            if (_noTranslate.Checked)
-            {
-                File.Create(p);
-            } else
-            {
-                if (File.Exists(p)) File.Delete(p);
-            }
+            if (_formatComboBox.SelectedIndex < 0 || _formatComboBox.SelectedIndex > 2)
+                _config.format = NeteaseConfig.OutputFormat.Both;
+            else
+                _config.format = (NeteaseConfig.OutputFormat)_formatComboBox.SelectedIndex;
+            SaveSettingsInternal();
+        }
+
+        private void SaveSettingsInternal()
+        {
+            string configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
+            var json = JsonConvert.SerializeObject(_config);
+            File.WriteAllText(configPath, json, Encoding.UTF8);
         }
 
         // MusicBee is closing the plugin (plugin is being disabled by user or MusicBee is shutting down)
@@ -86,6 +125,8 @@ namespace MusicBeePlugin
             var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
             var p = Path.Combine(dataPath, NoTranslateFilename);
             if (File.Exists(p)) File.Delete(p);
+            string configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
+            if (File.Exists(configPath)) File.Delete(configPath);
         }
 
         private const string ProviderName = "Netease Cloud Music(网易云音乐)";
@@ -93,16 +134,17 @@ namespace MusicBeePlugin
             bool synchronisedPreferred, string provider)
         {
             if (provider != ProviderName) return null;
-            var isNoTranslate = File.Exists(Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), NoTranslateFilename));
 
             var searchResult = QueryWithFeatRemoved(trackTitle, artist);
             if (searchResult == null) return null;
             var lyricResult = RequestLyric(searchResult.id);
 
             if (lyricResult.lrc?.lyric == null) return null;
-            if (lyricResult.tlyric?.lyric == null || isNoTranslate)
+            if (lyricResult.tlyric?.lyric == null || _config.format == NeteaseConfig.OutputFormat.Original)
                 return lyricResult.lrc.lyric; // No need to process translation
 
+            if (_config.format == NeteaseConfig.OutputFormat.Translation)
+                return lyricResult.tlyric?.lyric ?? lyricResult.lrc.lyric;
             // translation
             return LyricProcessor.InjectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
         }
