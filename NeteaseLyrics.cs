@@ -135,9 +135,26 @@ namespace MusicBeePlugin
         {
             if (provider != ProviderName) return null;
 
-            var searchResult = QueryWithFeatRemoved(trackTitle, artist);
-            if (searchResult == null) return null;
-            var lyricResult = RequestLyric(searchResult.id);
+            var id = 0;
+            var specifiedId = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Custom10)
+                              ?? _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Custom10);
+            if (specifiedId != null && specifiedId.StartsWith("netease="))
+            {
+                specifiedId = specifiedId.Substring("netease=".Length);
+                int.TryParse(specifiedId, out id);
+            }
+
+            if (id == 0)
+            {
+                var searchResult = QueryWithFeatRemoved(trackTitle, artist);
+                if (searchResult == null) return null;
+                id = searchResult.id;
+            }
+
+            if (id == 0)
+                return null;
+
+            var lyricResult = RequestLyric(id);
 
             if (lyricResult.lrc?.lyric == null) return null;
             if (lyricResult.tlyric?.lyric == null || _config.format == NeteaseConfig.OutputFormat.Original)
@@ -160,15 +177,15 @@ namespace MusicBeePlugin
 
         private static SearchResultSong Query(string trackTitle, string artist)
         {
-            var ret = Query(trackTitle + " " + artist).result.songs.Where(rst =>
+            var ret = Query(trackTitle + " " + artist)?.result?.songs?.Where(rst =>
                 string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
-                    StringComparison.OrdinalIgnoreCase)).ToList();
-            if (ret.Count > 0) return ret[0];
+                    StringComparison.OrdinalIgnoreCase))?.ToList();
+            if (ret != null && ret.Count > 0) return ret[0];
 
-            ret = Query(trackTitle).result.songs.Where(rst =>
+            ret = Query(trackTitle)?.result?.songs?.Where(rst =>
                 string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
-                    StringComparison.OrdinalIgnoreCase)).ToList();
-            return ret.Count > 0 ? ret[0] : null;
+                    StringComparison.OrdinalIgnoreCase))?.ToList();
+            return ret != null && ret.Count > 0 ? ret[0] : null;
         }
 
         private static SearchResult Query(string s)
