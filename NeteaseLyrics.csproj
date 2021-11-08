@@ -136,11 +136,8 @@
     <PropertyGroup>
       <MyAssemblies>$(TargetPath)</MyAssemblies>
     </PropertyGroup>
-    <GetAssemblyIdentity
-        AssemblyFiles="$(MyAssemblies)">
-      <Output
-          TaskParameter="Assemblies"
-          ItemName="MyAssemblyIdentities"/>
+    <GetAssemblyIdentity AssemblyFiles="$(MyAssemblies)">
+      <Output TaskParameter="Assemblies" ItemName="MyAssemblyIdentities" />
     </GetAssemblyIdentity>
     <RemoveDir Directories="@(ZipFiles)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="pkgtemp\" />

@@ -14,7 +14,7 @@ namespace MusicBeePlugin
 {
     public class NeteaseConfig
     {
-        public enum OutputFormat : int
+        public enum OutputFormat
         {
             Original = 0,
             Both = 1,
@@ -26,9 +26,16 @@ namespace MusicBeePlugin
 
     public partial class Plugin
     {
+        private const string ProviderName = "Netease Cloud Music(网易云音乐)";
+        private const string ConfigFilename = "netease_config";
+        private const string NoTranslateFilename = "netease_notranslate";
+        private NeteaseConfig _config = new NeteaseConfig();
+        private ComboBox _formatComboBox = new ComboBox();
+
         private MusicBeeApiInterface _mbApiInterface;
         private readonly PluginInfo _about = new PluginInfo();
 
+        // ReSharper disable once UnusedMember.Global
         public PluginInfo Initialise(IntPtr apiInterfacePtr)
         {
             var versions = Assembly.GetExecutingAssembly().GetName().Version.ToString().Split('.');
@@ -72,12 +79,7 @@ namespace MusicBeePlugin
             return _about;
         }
 
-        private CheckBox _noTranslate;
-        private NeteaseConfig _config = new NeteaseConfig();
-        private ComboBox _formatComboBox = new ComboBox();
-        private const string ConfigFilename = "netease_config";
-        private const string NoTranslateFilename = "netease_notranslate";
-
+        // ReSharper disable once UnusedMember.Global
         public bool Configure(IntPtr panelHandle)
         {
             if (panelHandle == IntPtr.Zero) return false;
@@ -98,6 +100,7 @@ namespace MusicBeePlugin
 
         // called by MusicBee when the user clicks Apply or Save in the MusicBee Preferences screen.
         // its up to you to figure out whether anything has changed and needs updating
+        // ReSharper disable once UnusedMember.Global
         public void SaveSettings()
         {
             if (_formatComboBox.SelectedIndex < 0 || _formatComboBox.SelectedIndex > 2)
@@ -115,11 +118,13 @@ namespace MusicBeePlugin
         }
 
         // MusicBee is closing the plugin (plugin is being disabled by user or MusicBee is shutting down)
+        // ReSharper disable once UnusedMember.Global
         public void Close(PluginCloseReason reason)
         {
         }
 
         // uninstall this plugin - clean up any persisted files
+        // ReSharper disable once UnusedMember.Global
         public void Uninstall()
         {
             var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
@@ -129,7 +134,7 @@ namespace MusicBeePlugin
             if (File.Exists(configPath)) File.Delete(configPath);
         }
 
-        private const string ProviderName = "Netease Cloud Music(网易云音乐)";
+        // ReSharper disable once UnusedMember.Global
         public string RetrieveLyrics(string sourceFileUrl, string artist, string trackTitle, string album,
             bool synchronisedPreferred, string provider)
         {
@@ -178,13 +183,13 @@ namespace MusicBeePlugin
         private static SearchResultSong Query(string trackTitle, string artist)
         {
             var ret = Query(trackTitle + " " + artist)?.result?.songs?.Where(rst =>
-                string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
-                    StringComparison.OrdinalIgnoreCase))?.ToList();
+                    string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
+                        StringComparison.OrdinalIgnoreCase)).ToList();
             if (ret != null && ret.Count > 0) return ret[0];
 
             ret = Query(trackTitle)?.result?.songs?.Where(rst =>
                 string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
-                    StringComparison.OrdinalIgnoreCase))?.ToList();
+                    StringComparison.OrdinalIgnoreCase)).ToList();
             return ret != null && ret.Count > 0 ? ret[0] : null;
         }
 
@@ -193,16 +198,23 @@ namespace MusicBeePlugin
             using (var client = new WebClient())
             {
                 client.Headers.Add(HttpRequestHeader.Referer, "http://music.163.com/");
-                client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
+                //client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
 
-                var searchPost = new NameValueCollection
-                {
-                    ["s"] = s,
-                    ["limit"] = "6",
-                    ["offset"] = "0",
-                    ["type"] = "1"
-                };
-                var searchResult = JsonConvert.DeserializeObject<SearchResult>(Encoding.UTF8.GetString(client.UploadValues("http://music.163.com/api/search/pc", searchPost)));
+                //var searchPost = new NameValueCollection
+                //{
+                //    ["s"] = s,
+                //    ["limit"] = "6",
+                //    ["offset"] = "0",
+                //    ["type"] = "1"
+                //};
+                var nameEncoded = Uri.EscapeUriString(s);
+                var searchResult = JsonConvert.DeserializeObject<SearchResult>(
+                    Encoding.UTF8.GetString(
+                        client.DownloadData(
+                            $"http://music.163.com/api/search/get/web?csrf_token=hlpretag=&hlposttag=&s={nameEncoded}&type=1&offset=0&total=true&limit=6")
+                    )
+                );
+                //var searchResult = JsonConvert.DeserializeObject<SearchResult>(Encoding.UTF8.GetString(client.UploadValues("http://music.163.com/api/search/pc", searchPost)));
                 if (searchResult.code != 200) return null;
                 return searchResult.result.songCount <= 0 ? null : searchResult;
             }

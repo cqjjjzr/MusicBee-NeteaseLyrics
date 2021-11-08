@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+#pragma warning disable 649 // Suppresses: ___ is never assigned to
 
 // ReSharper disable All
 
