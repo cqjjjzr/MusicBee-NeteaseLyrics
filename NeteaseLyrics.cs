@@ -251,8 +251,8 @@ namespace MusicBeePlugin
 
         public string RemoveFeat(string name)
         {
-			return Regex.Replace(name, "\\s*\\(feat.+\\)", "", RegexOptions.IgnoreCase);
-		}
+            return Regex.Replace(name, "\\s*\\(feat.+\\)", "", RegexOptions.IgnoreCase);
+        }
 
         public static string RemoveLeadingNumber(string name)
         {
