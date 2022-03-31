@@ -22,6 +22,7 @@ namespace MusicBeePlugin
         }
 
         public OutputFormat format { get; set; } = OutputFormat.Both;
+        public bool fuzzy { get; set; } = false;
     }
 
     public partial class Plugin
@@ -30,7 +31,8 @@ namespace MusicBeePlugin
         private const string ConfigFilename = "netease_config";
         private const string NoTranslateFilename = "netease_notranslate";
         private NeteaseConfig _config = new NeteaseConfig();
-        private ComboBox _formatComboBox = new ComboBox();
+        private ComboBox _formatComboBox = null;
+        private CheckBox _fuzzyCheckBox = null;
 
         private MusicBeeApiInterface _mbApiInterface;
         private readonly PluginInfo _about = new PluginInfo();
@@ -54,7 +56,7 @@ namespace MusicBeePlugin
             _about.MinInterfaceVersion = MinInterfaceVersion;
             _about.MinApiRevision = MinApiRevision;
             _about.ReceiveNotifications = ReceiveNotificationFlags.DownloadEvents;
-            _about.ConfigurationPanelHeight = 50;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+            _about.ConfigurationPanelHeight = 90;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
 
             string noTranslatePath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), NoTranslateFilename);
             string configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
@@ -93,8 +95,16 @@ namespace MusicBeePlugin
             _formatComboBox.Items.Add("Only translation");
             _formatComboBox.AutoSize = true;
             _formatComboBox.Location = new Point(0, 0);
+            _formatComboBox.Width = 300;
             _formatComboBox.SelectedIndex = (int)_config.format;
             configPanel.Controls.Add(_formatComboBox);
+
+            _fuzzyCheckBox = new CheckBox();
+            _fuzzyCheckBox.Text = "Fuzzy matching (Don't double check match and use first result directly)";
+            _fuzzyCheckBox.Location = new Point(0, 50);
+            _fuzzyCheckBox.Checked = _config.fuzzy;
+            _fuzzyCheckBox.AutoSize = true;
+            configPanel.Controls.Add(_fuzzyCheckBox);
             return false;
         }
 
@@ -107,6 +117,7 @@ namespace MusicBeePlugin
                 _config.format = NeteaseConfig.OutputFormat.Both;
             else
                 _config.format = (NeteaseConfig.OutputFormat)_formatComboBox.SelectedIndex;
+            _config.fuzzy = _fuzzyCheckBox.Checked;
             SaveSettingsInternal();
         }
 
@@ -180,15 +191,15 @@ namespace MusicBeePlugin
             return ret;
         }
 
-        private static SearchResultSong Query(string trackTitle, string artist)
+        private SearchResultSong Query(string trackTitle, string artist)
         {
             var ret = Query(trackTitle + " " + artist)?.result?.songs?.Where(rst =>
-                    string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
-                        StringComparison.OrdinalIgnoreCase)).ToList();
+                _config.fuzzy || string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
+                    StringComparison.OrdinalIgnoreCase)).ToList();
             if (ret != null && ret.Count > 0) return ret[0];
 
             ret = Query(trackTitle)?.result?.songs?.Where(rst =>
-                string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
+                _config.fuzzy || string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
                     StringComparison.OrdinalIgnoreCase)).ToList();
             return ret != null && ret.Count > 0 ? ret[0] : null;
         }
@@ -211,7 +222,7 @@ namespace MusicBeePlugin
                 var searchResult = JsonConvert.DeserializeObject<SearchResult>(
                     Encoding.UTF8.GetString(
                         client.DownloadData(
-                            $"http://music.163.com/api/search/get/web?csrf_token=hlpretag=&hlposttag=&s={nameEncoded}&type=1&offset=0&total=true&limit=6")
+                            $"http://music.163.com/api/search/get/?csrf_token=hlpretag=&hlposttag=&s={nameEncoded}&type=1&offset=0&total=true&limit=6")
                     )
                 );
                 //var searchResult = JsonConvert.DeserializeObject<SearchResult>(Encoding.UTF8.GetString(client.UploadValues("http://music.163.com/api/search/pc", searchPost)));
