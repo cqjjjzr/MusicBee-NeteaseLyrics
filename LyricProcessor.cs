@@ -27,11 +27,9 @@ namespace MusicBeePlugin
             return (
                 from line in lrc.Split('\n')
                 where !string.IsNullOrWhiteSpace(line)
-                select Regex.Matches(line, "((\\[.+?])+)(.+)")
-                into matches
+                select Regex.Matches(line, "((\\[.+?])+)(.+)") into matches
                 where matches.Count >= 1
-                select matches[0]
-                into match
+                select matches[0] into match
                 where match.Groups.Count >= 3
                 let content = match.Groups[3].Value
                 from Capture capture in match.Groups[1].Captures
