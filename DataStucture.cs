@@ -20,7 +20,7 @@ namespace MusicBeePlugin
     class SearchResultSong
     {
         public string name;
-        public int id;
+        public long id;
     }
 
     class LyricResult

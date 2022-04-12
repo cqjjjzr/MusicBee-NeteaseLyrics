@@ -86,8 +86,11 @@ namespace MusicBeePlugin
         {
             if (panelHandle == IntPtr.Zero) return false;
             var configPanel = (Panel)Control.FromHandle(panelHandle);
+            // Components are automatically disposed when this is called.
             configPanel.Controls.Clear();
 
+            // MB_AddPanel doesn't skin the component correctly either
+            //_formatComboBox = (ComboBox)_mbApiInterface.MB_AddPanel(null, PluginPanelDock.ComboBox);
             _formatComboBox = new ComboBox();
             _formatComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
             _formatComboBox.Items.Add("Only original text");
@@ -151,14 +154,11 @@ namespace MusicBeePlugin
         {
             if (provider != ProviderName) return null;
 
-            var id = 0;
+            var id = 0L;
             var specifiedId = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Custom10)
                               ?? _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Custom10);
-            if (specifiedId != null && specifiedId.StartsWith("netease="))
-            {
-                specifiedId = specifiedId.Substring("netease=".Length);
-                int.TryParse(specifiedId, out id);
-            }
+
+            id = TryParseNeteaseURL(specifiedId);
 
             if (id == 0)
             {
@@ -231,7 +231,7 @@ namespace MusicBeePlugin
             }
         }
 
-        private static LyricResult RequestLyric(int id)
+        private static LyricResult RequestLyric(long id)
         {
             using (var client = new WebClient())
             {
@@ -249,14 +249,43 @@ namespace MusicBeePlugin
             return s.Substring(0, pos == -1 ? s.Length : pos).Trim();
         }
 
-        public string RemoveFeat(string name)
+        private string RemoveFeat(string name)
         {
             return Regex.Replace(name, "\\s*\\(feat.+\\)", "", RegexOptions.IgnoreCase);
         }
 
-        public static string RemoveLeadingNumber(string name)
+        private static string RemoveLeadingNumber(string name)
         {
             return Regex.Replace(name, "^\\d+\\.?\\s*", "", RegexOptions.IgnoreCase);
+        }
+
+        private static long TryParseNeteaseURL(string input)
+        {
+            if (input == null)
+                return 0;
+            if (input.StartsWith("netease="))
+            {
+                input = input.Substring("netease=".Length);
+                long.TryParse(input, out var id);
+                return id;
+            }
+
+            if (input.Contains("music.163.com"))
+            {
+                var matches = Regex.Matches(input, "id=(\\d+)");
+                if (matches.Count <= 0)
+                    return 0;
+
+                var groups = matches[0].Groups;
+                if (groups.Count <= 1)
+                    return 0;
+
+                var idString = groups[1].Captures[0].Value;
+                long.TryParse(idString, out var id);
+                return id;
+            }
+
+            return 0;
         }
 
         public string[] GetProviders()
