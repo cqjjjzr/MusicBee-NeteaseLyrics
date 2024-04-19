@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using System.Collections.Specialized;
@@ -9,6 +10,8 @@ using System.Reflection;
 using System.Text;
 using Newtonsoft.Json;
 using System.Text.RegularExpressions;
+using F23.StringSimilarity;
+using F23.StringSimilarity.Interfaces;
 
 namespace MusicBeePlugin
 {
@@ -158,15 +161,22 @@ namespace MusicBeePlugin
             var specifiedId = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Custom10)
                               ?? _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Custom10);
 
+            // MusicBee 是纯**，会自动去掉标题内的各种东西
+            // 问题在于有些歌曲括号里的内容比歌名还长
+            // 所以我们这里手动获取给他加回来
+            var realTitle = _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.TrackTitle);
+
             id = TryParseNeteaseURL(specifiedId);
 
             if (id == 0)
             {
-                var searchResult = QueryWithFeatRemoved(trackTitle, artist);
-                if (searchResult == null) return null;
-                id = searchResult.id;
+                var searchResult = QueryBestMatch(realTitle, artist, album);
+                if (searchResult.Count == 0) return null;
+                Console.Error.WriteLine(string.Join(", ", searchResult));
+                id = searchResult.First().id;
             }
 
+            
             if (id == 0)
                 return null;
 
@@ -182,7 +192,7 @@ namespace MusicBeePlugin
             return LyricProcessor.InjectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
         }
 
-        private SearchResultSong QueryWithFeatRemoved(string trackTitle, string artist)
+        public SearchResultSong QueryWithFeatRemoved(string trackTitle, string artist)
         {
             var ret = Query(trackTitle, artist);
             if (ret != null) return ret;
@@ -191,7 +201,7 @@ namespace MusicBeePlugin
             return ret;
         }
 
-        private SearchResultSong Query(string trackTitle, string artist)
+        public SearchResultSong Query(string trackTitle, string artist)
         {
             var ret = Query(trackTitle + " " + artist)?.result?.songs?.Where(rst =>
                 _config.fuzzy || string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
@@ -204,7 +214,25 @@ namespace MusicBeePlugin
             return ret != null && ret.Count > 0 ? ret[0] : null;
         }
 
-        private static SearchResult Query(string s)
+        public static double Similarity(INormalizedStringSimilarity algorithm, SearchResultSong song, string trackTitle, string artist, string album)
+        {
+            return algorithm.Similarity(song.artists[0].name, artist) * 0.1 +
+                   algorithm.Similarity(song.album.name, album) * 0.25 +
+                   algorithm.Similarity(song.name, trackTitle) * 0.65;
+        }
+
+        public List<SearchResultSong> QueryBestMatch(string trackTitle, string artist, string album)
+        {
+            var algorithm = new JaroWinkler();
+            var result = (Query($"{trackTitle} {artist} {album}")?.result?.songs
+                ?.Concat(Query(trackTitle)?.result?.songs ?? Enumerable.Empty<SearchResultSong>()) ?? Enumerable.Empty<SearchResultSong>()).ToHashSet();
+            return result.Where(song => Similarity(algorithm, song, trackTitle, artist, album) > 0.65)
+                .OrderByDescending(song =>
+                Similarity(algorithm, song, trackTitle, artist, album)
+            ).ToList();
+        }
+
+        public static SearchResult Query(string s)
         {
             using (var client = new WebClient())
             {
@@ -222,7 +250,7 @@ namespace MusicBeePlugin
                 var searchResult = JsonConvert.DeserializeObject<SearchResult>(
                     Encoding.UTF8.GetString(
                         client.DownloadData(
-                            $"http://music.163.com/api/search/get/?csrf_token=hlpretag=&hlposttag=&s={nameEncoded}&type=1&offset=0&total=true&limit=6")
+                            $"http://music.163.com/api/search/get/?csrf_token=hlpretag=&hlposttag=&s={nameEncoded}&type=1&offset=0&total=true&limit=8")
                     )
                 );
                 //var searchResult = JsonConvert.DeserializeObject<SearchResult>(Encoding.UTF8.GetString(client.UploadValues("http://music.163.com/api/search/pc", searchPost)));
