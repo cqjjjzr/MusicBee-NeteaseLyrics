@@ -95,6 +95,9 @@
     <Compile Include="LyricProcessor.cs" />
     <Compile Include="MusicBeeInterface.cs" />
     <Compile Include="NeteaseLyrics.cs" />
+    <Compile Include="NeteaseApi.cs" />
+    <Compile Include="SearchMatch.cs" />
+    <Compile Include="SearchMatchLegacy.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

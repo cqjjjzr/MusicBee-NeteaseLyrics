@@ -1,10 +1,8 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;
-using System.Collections.Specialized;
-using System.Net;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using Newtonsoft.Json;
@@ -21,8 +19,9 @@ namespace MusicBeePlugin
             Translation = 2
         }
 
-        public OutputFormat format { get; set; } = OutputFormat.Both;
-        public bool fuzzy { get; set; } = false;
+        public OutputFormat Format { get; set; } = OutputFormat.Both;
+        public bool Fuzzy { get; set; }
+        public bool UseLegacyMatch { get; set; }
     }
 
     public partial class Plugin
@@ -31,13 +30,14 @@ namespace MusicBeePlugin
         private const string ConfigFilename = "netease_config";
         private const string NoTranslateFilename = "netease_notranslate";
         private NeteaseConfig _config = new NeteaseConfig();
-        private ComboBox _formatComboBox = null;
-        private CheckBox _fuzzyCheckBox = null;
+        private ComboBox _formatComboBox;
+        private CheckBox _fuzzyCheckBox;
+        private CheckBox _useLegacyCheckBox;
 
         private MusicBeeApiInterface _mbApiInterface;
         private readonly PluginInfo _about = new PluginInfo();
 
-        // ReSharper disable once UnusedMember.Global
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         public PluginInfo Initialise(IntPtr apiInterfacePtr)
         {
             var versions = Assembly.GetExecutingAssembly().GetName().Version.ToString().Split('.');
@@ -56,32 +56,14 @@ namespace MusicBeePlugin
             _about.MinInterfaceVersion = MinInterfaceVersion;
             _about.MinApiRevision = MinApiRevision;
             _about.ReceiveNotifications = ReceiveNotificationFlags.DownloadEvents;
-            _about.ConfigurationPanelHeight = 90;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
+            _about.ConfigurationPanelHeight = 120;   // height in pixels that musicbee should reserve in a panel for config settings. When set, a handle to an empty panel will be passed to the Configure function
 
-            string noTranslatePath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), NoTranslateFilename);
-            string configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
-            if (File.Exists(configPath))
-            {
-                try
-                {
-                    _config = JsonConvert.DeserializeObject<NeteaseConfig>(File.ReadAllText(configPath, Encoding.UTF8));
-                }
-                catch (Exception ex)
-                {
-                    _mbApiInterface.MB_Trace("[NeteaseMusic] Failed to load config" + ex);
-                }
-            }
-            if (File.Exists(noTranslatePath))
-            {
-                File.Delete(noTranslatePath);
-                _config.format = NeteaseConfig.OutputFormat.Original;
-                SaveSettingsInternal();
-            }
-
+            ReadConfig();
+            MigrateLegacySetting();
             return _about;
         }
 
-        // ReSharper disable once UnusedMember.Global
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         public bool Configure(IntPtr panelHandle)
         {
             if (panelHandle == IntPtr.Zero) return false;
@@ -91,175 +73,148 @@ namespace MusicBeePlugin
 
             // MB_AddPanel doesn't skin the component correctly either
             //_formatComboBox = (ComboBox)_mbApiInterface.MB_AddPanel(null, PluginPanelDock.ComboBox);
-            _formatComboBox = new ComboBox();
-            _formatComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            _formatComboBox = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                AutoSize = true,
+                Location = new Point(0, 0),
+                Width = 300,
+                SelectedIndex = (int)_config.Format
+            };
             _formatComboBox.Items.Add("Only original text");
             _formatComboBox.Items.Add("Original text and translation");
             _formatComboBox.Items.Add("Only translation");
-            _formatComboBox.AutoSize = true;
-            _formatComboBox.Location = new Point(0, 0);
-            _formatComboBox.Width = 300;
-            _formatComboBox.SelectedIndex = (int)_config.format;
             configPanel.Controls.Add(_formatComboBox);
 
-            _fuzzyCheckBox = new CheckBox();
-            _fuzzyCheckBox.Text = "Fuzzy matching (Don't double check match and use first result directly)";
-            _fuzzyCheckBox.Location = new Point(0, 50);
-            _fuzzyCheckBox.Checked = _config.fuzzy;
-            _fuzzyCheckBox.AutoSize = true;
+            _useLegacyCheckBox = new CheckBox
+            {
+                Text = "Use legacy matching strategy",
+                Location = new Point(0, 50),
+                Checked = _config.UseLegacyMatch,
+                AutoSize = true
+            };
+
+            _fuzzyCheckBox = new CheckBox
+            {
+                Text = "Fuzzy matching (Don't double check match and use first result directly)",
+                Location = new Point(0, 80),
+                Checked = _config.Fuzzy,
+                AutoSize = true
+            };
+
+            _useLegacyCheckBox.CheckedChanged += (sender, e) =>
+            {
+                // "Fuzzy" not available when using new strategy
+                _fuzzyCheckBox.Enabled = !_useLegacyCheckBox.Checked;
+            };
+
+            configPanel.Controls.Add(_useLegacyCheckBox);
             configPanel.Controls.Add(_fuzzyCheckBox);
+
             return false;
         }
 
         // called by MusicBee when the user clicks Apply or Save in the MusicBee Preferences screen.
-        // its up to you to figure out whether anything has changed and needs updating
-        // ReSharper disable once UnusedMember.Global
+        // It's up to you to figure out whether anything has changed and needs updating
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         public void SaveSettings()
         {
             if (_formatComboBox.SelectedIndex < 0 || _formatComboBox.SelectedIndex > 2)
-                _config.format = NeteaseConfig.OutputFormat.Both;
+                _config.Format = NeteaseConfig.OutputFormat.Both;
             else
-                _config.format = (NeteaseConfig.OutputFormat)_formatComboBox.SelectedIndex;
-            _config.fuzzy = _fuzzyCheckBox.Checked;
+                _config.Format = (NeteaseConfig.OutputFormat)_formatComboBox.SelectedIndex;
+            _config.Fuzzy = _fuzzyCheckBox.Checked;
+            _config.UseLegacyMatch = _useLegacyCheckBox.Checked;
             SaveSettingsInternal();
         }
 
         private void SaveSettingsInternal()
         {
-            string configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
+            var configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
             var json = JsonConvert.SerializeObject(_config);
             File.WriteAllText(configPath, json, Encoding.UTF8);
         }
 
         // MusicBee is closing the plugin (plugin is being disabled by user or MusicBee is shutting down)
-        // ReSharper disable once UnusedMember.Global
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         public void Close(PluginCloseReason reason)
         {
         }
 
         // uninstall this plugin - clean up any persisted files
-        // ReSharper disable once UnusedMember.Global
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         public void Uninstall()
         {
             var dataPath = _mbApiInterface.Setting_GetPersistentStoragePath();
             var p = Path.Combine(dataPath, NoTranslateFilename);
             if (File.Exists(p)) File.Delete(p);
-            string configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
+            var configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
             if (File.Exists(configPath)) File.Delete(configPath);
         }
 
-        // ReSharper disable once UnusedMember.Global
-        public string RetrieveLyrics(string sourceFileUrl, string artist, string trackTitle, string album,
+        [SuppressMessage("ReSharper", "UnusedParameter.Global")]
+        public string RetrieveLyrics(string sourceFileUrl, 
+            string artist, string trackTitle, string album,
             bool synchronisedPreferred, string provider)
         {
             if (provider != ProviderName) return null;
 
-            var id = 0L;
             var specifiedId = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Custom10)
                               ?? _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Custom10);
 
-            id = TryParseNeteaseURL(specifiedId);
-
+            var id = TryParseNeteaseUrl(specifiedId);
             if (id == 0)
             {
-                var searchResult = QueryWithFeatRemoved(trackTitle, artist);
-                if (searchResult == null) return null;
-                id = searchResult.id;
+                var realTitle = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.TrackTitle);
+                var realArtist = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Artist);
+                var realAlbum = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Album);
+                var duration = _mbApiInterface.Library_GetFileProperty(sourceFileUrl, FilePropertyType.Duration);
+                id = !_config.UseLegacyMatch 
+                    ? SearchMatch.SearchAndMatch(realTitle, realArtist, realAlbum, duration)
+                    : SearchMatchLegacy.QueryWithFeatRemoved(realTitle, realArtist, _config.Fuzzy);
             }
 
             if (id == 0)
                 return null;
 
-            var lyricResult = RequestLyric(id);
+            var lyricResult = NeteaseApi.RequestLyric(id);
 
             if (lyricResult.lrc?.lyric == null) return null;
-            if (lyricResult.tlyric?.lyric == null || _config.format == NeteaseConfig.OutputFormat.Original)
+            if (lyricResult.tlyric?.lyric == null || _config.Format == NeteaseConfig.OutputFormat.Original)
                 return lyricResult.lrc.lyric; // No need to process translation
 
-            if (_config.format == NeteaseConfig.OutputFormat.Translation)
+            if (_config.Format == NeteaseConfig.OutputFormat.Translation)
                 return lyricResult.tlyric?.lyric ?? lyricResult.lrc.lyric;
             // translation
             return LyricProcessor.InjectTranslation(lyricResult.lrc.lyric, lyricResult.tlyric.lyric);
         }
 
-        private SearchResultSong QueryWithFeatRemoved(string trackTitle, string artist)
+        private void ReadConfig()
         {
-            var ret = Query(trackTitle, artist);
-            if (ret != null) return ret;
-
-            ret = Query(RemoveLeadingNumber(RemoveFeat(trackTitle)), artist);
-            return ret;
-        }
-
-        private SearchResultSong Query(string trackTitle, string artist)
-        {
-            var ret = Query(trackTitle + " " + artist)?.result?.songs?.Where(rst =>
-                _config.fuzzy || string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
-                    StringComparison.OrdinalIgnoreCase)).ToList();
-            if (ret != null && ret.Count > 0) return ret[0];
-
-            ret = Query(trackTitle)?.result?.songs?.Where(rst =>
-                _config.fuzzy || string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
-                    StringComparison.OrdinalIgnoreCase)).ToList();
-            return ret != null && ret.Count > 0 ? ret[0] : null;
-        }
-
-        private static SearchResult Query(string s)
-        {
-            using (var client = new WebClient())
+            var configPath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), ConfigFilename);
+            if (!File.Exists(configPath)) 
+                return;
+            try
             {
-                client.Headers.Add(HttpRequestHeader.Referer, "http://music.163.com/");
-                //client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
-
-                //var searchPost = new NameValueCollection
-                //{
-                //    ["s"] = s,
-                //    ["limit"] = "6",
-                //    ["offset"] = "0",
-                //    ["type"] = "1"
-                //};
-                var nameEncoded = Uri.EscapeUriString(s);
-                var searchResult = JsonConvert.DeserializeObject<SearchResult>(
-                    Encoding.UTF8.GetString(
-                        client.DownloadData(
-                            $"http://music.163.com/api/search/get/?csrf_token=hlpretag=&hlposttag=&s={nameEncoded}&type=1&offset=0&total=true&limit=6")
-                    )
-                );
-                //var searchResult = JsonConvert.DeserializeObject<SearchResult>(Encoding.UTF8.GetString(client.UploadValues("http://music.163.com/api/search/pc", searchPost)));
-                if (searchResult.code != 200) return null;
-                return searchResult.result.songCount <= 0 ? null : searchResult;
+                _config = JsonConvert.DeserializeObject<NeteaseConfig>(File.ReadAllText(configPath, Encoding.UTF8));
+            }
+            catch (Exception ex)
+            {
+                _mbApiInterface.MB_Trace("[NeteaseMusic] Failed to load config" + ex);
             }
         }
 
-        private static LyricResult RequestLyric(long id)
+        private void MigrateLegacySetting()
         {
-            using (var client = new WebClient())
-            {
-                client.Headers.Add(HttpRequestHeader.Referer, "http://music.163.com/");
-                client.Headers.Add(HttpRequestHeader.Cookie, "appver=1.5.0.75771;");
-                var lyricResult = JsonConvert.DeserializeObject<LyricResult>(Encoding.UTF8.GetString(client.DownloadData("http://music.163.com/api/song/lyric?os=pc&id=" + id + "&lv=-1&kv=-1&tv=-1")));
-                return lyricResult.code != 200 ? null : lyricResult;
-            }
+            var noTranslatePath = Path.Combine(_mbApiInterface.Setting_GetPersistentStoragePath(), NoTranslateFilename);
+            if (!File.Exists(noTranslatePath))
+                return;
+            File.Delete(noTranslatePath);
+            _config.Format = NeteaseConfig.OutputFormat.Original;
+            SaveSettingsInternal();
         }
 
-        private static string GetFirstSeq(string s)
-        {
-            s = s.Replace("\u00A0", " ");
-            var pos = s.IndexOf(' ');
-            return s.Substring(0, pos == -1 ? s.Length : pos).Trim();
-        }
-
-        private string RemoveFeat(string name)
-        {
-            return Regex.Replace(name, "\\s*\\(feat.+\\)", "", RegexOptions.IgnoreCase);
-        }
-
-        private static string RemoveLeadingNumber(string name)
-        {
-            return Regex.Replace(name, "^\\d+\\.?\\s*", "", RegexOptions.IgnoreCase);
-        }
-
-        private static long TryParseNeteaseURL(string input)
+        private static long TryParseNeteaseUrl(string input)
         {
             if (input == null)
                 return 0;
@@ -270,28 +225,28 @@ namespace MusicBeePlugin
                 return id;
             }
 
-            if (input.Contains("music.163.com"))
-            {
-                var matches = Regex.Matches(input, "id=(\\d+)");
-                if (matches.Count <= 0)
-                    return 0;
+            if (!input.Contains("music.163.com"))
+                return 0;
 
-                var groups = matches[0].Groups;
-                if (groups.Count <= 1)
-                    return 0;
+            var matches = Regex.Matches(input, "id=(\\d+)");
+            if (matches.Count <= 0)
+                return 0;
 
-                var idString = groups[1].Captures[0].Value;
-                long.TryParse(idString, out var id);
-                return id;
-            }
+            var groups = matches[0].Groups;
+            if (groups.Count <= 1)
+                return 0;
 
-            return 0;
+            var idString = groups[1].Captures[0].Value;
+            long.TryParse(idString, out var id2);
+            return id2;
         }
 
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         public string[] GetProviders()
         {
             return new []{ProviderName};
         }
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         public void ReceiveNotification(string sourceFileUrl, NotificationType type)
         {
         }

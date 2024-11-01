@@ -5,32 +5,32 @@
 
 namespace MusicBeePlugin
 {
-    class SearchResult
+    internal class SearchResult
     {
         public SearchResultResult result;
         public int code;
     }
 
-    class SearchResultResult
+    internal class SearchResultResult
     {
         public int songCount;
         public IEnumerable<SearchResultSong> songs;
     }
 
-    class SearchResultSong
+    internal class SearchResultSong
     {
         public string name;
         public long id;
     }
 
-    class LyricResult
+    internal class LyricResult
     {
         public LyricInner lrc;
         public LyricInner tlyric;
         public int code;
     }
 
-    class LyricInner
+    internal class LyricInner
     {
         public string lyric;
     }
