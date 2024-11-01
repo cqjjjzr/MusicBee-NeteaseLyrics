@@ -20,12 +20,12 @@ namespace MusicBeePlugin
 
         private static SearchResultSong Query(string trackTitle, string artist, bool fuzzy)
         {
-            var ret = NeteaseApi.Search(trackTitle + " " + artist)?.result?.songs?.Where(rst =>
+            var ret = NeteaseApi.Search(trackTitle + " " + artist)?.Where(rst =>
                 fuzzy || string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
                     StringComparison.OrdinalIgnoreCase)).ToList();
             if (ret != null && ret.Count > 0) return ret[0];
 
-            ret = NeteaseApi.Search(trackTitle)?.result?.songs?.Where(rst =>
+            ret = NeteaseApi.Search(trackTitle)?.Where(rst =>
                 fuzzy || string.Equals(GetFirstSeq(RemoveLeadingNumber(rst.name)), GetFirstSeq(trackTitle),
                     StringComparison.OrdinalIgnoreCase)).ToList();
             return ret != null && ret.Count > 0 ? ret[0] : null;

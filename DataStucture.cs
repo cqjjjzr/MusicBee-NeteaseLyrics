@@ -21,6 +21,21 @@ namespace MusicBeePlugin
     {
         public string name;
         public long id;
+        public long duration; // in ms
+        public SearchResultAlbum album;
+        public SearchResultArtist[] artists;
+    }
+
+    internal class SearchResultAlbum 
+    {
+        public long id;
+        public string name;
+    }
+
+    internal class SearchResultArtist
+    {
+        public long id;
+        public string name;
     }
 
     internal class LyricResult

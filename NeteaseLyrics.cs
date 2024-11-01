@@ -3,10 +3,14 @@ using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using Newtonsoft.Json;
 using System.Text.RegularExpressions;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("NeteaseLyricsTest")]
 
 namespace MusicBeePlugin
 {
@@ -78,12 +82,12 @@ namespace MusicBeePlugin
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 AutoSize = true,
                 Location = new Point(0, 0),
-                Width = 300,
-                SelectedIndex = (int)_config.Format
+                Width = 300
             };
             _formatComboBox.Items.Add("Only original text");
             _formatComboBox.Items.Add("Original text and translation");
             _formatComboBox.Items.Add("Only translation");
+            _formatComboBox.SelectedIndex = (int)_config.Format;
             configPanel.Controls.Add(_formatComboBox);
 
             _useLegacyCheckBox = new CheckBox
@@ -137,6 +141,7 @@ namespace MusicBeePlugin
 
         // MusicBee is closing the plugin (plugin is being disabled by user or MusicBee is shutting down)
         [SuppressMessage("ReSharper", "UnusedMember.Global")]
+        [SuppressMessage("ReSharper", "UnusedParameter.Global")]
         public void Close(PluginCloseReason reason)
         {
         }
@@ -152,6 +157,7 @@ namespace MusicBeePlugin
             if (File.Exists(configPath)) File.Delete(configPath);
         }
 
+        [SuppressMessage("ReSharper", "UnusedMember.Global")]
         [SuppressMessage("ReSharper", "UnusedParameter.Global")]
         public string RetrieveLyrics(string sourceFileUrl, 
             string artist, string trackTitle, string album,
@@ -168,9 +174,9 @@ namespace MusicBeePlugin
                 var realTitle = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.TrackTitle);
                 var realArtist = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Artist);
                 var realAlbum = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Album);
-                var duration = _mbApiInterface.Library_GetFileProperty(sourceFileUrl, FilePropertyType.Duration);
+                var durationStr = _mbApiInterface.Library_GetFileProperty(sourceFileUrl, FilePropertyType.Duration);
                 id = !_config.UseLegacyMatch 
-                    ? SearchMatch.SearchAndMatch(realTitle, realArtist, realAlbum, duration)
+                    ? SearchMatch.SearchAndMatch(realTitle, realArtist, realAlbum, ParseDurationString(durationStr))
                     : SearchMatchLegacy.QueryWithFeatRemoved(realTitle, realArtist, _config.Fuzzy);
             }
 
@@ -239,6 +245,19 @@ namespace MusicBeePlugin
             var idString = groups[1].Captures[0].Value;
             long.TryParse(idString, out var id2);
             return id2;
+        }
+
+        private static long ParseDurationString(string durationStr)
+        {
+            var multiplier = 1000L;
+            var sum = 0L;
+            foreach (var part in durationStr.Split(':').Reverse())
+            {
+                if (part.Length > 0)
+                    sum += multiplier * long.Parse(part);
+                multiplier *= 60;
+            }
+            return sum;
         }
 
         [SuppressMessage("ReSharper", "UnusedMember.Global")]

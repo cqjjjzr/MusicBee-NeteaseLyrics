@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 namespace MusicBeePlugin
 {
     [SuppressMessage("ReSharper", "InconsistentNaming")]
-    static class LyricProcessor
+    internal static class LyricProcessor
     {
         private static readonly Regex LyricLineRegex = new Regex(@"((\[.+?])+)(.*)", RegexOptions.Compiled);
         public static string InjectTranslation(string originalLrc, string translationLrc)
@@ -27,16 +27,17 @@ namespace MusicBeePlugin
 
         private static List<LyricEntry> Parse(string lrc)
         {
-            return (
-                from line in lrc.Split('\n')
-                where !string.IsNullOrWhiteSpace(line)
-                select LyricLineRegex.Matches(line) into matches
-                where matches.Count >= 1
-                select matches[0] into match
-                where match.Groups.Count >= 3
-                let content = match.Groups[3].Value
-                from Capture capture in match.Groups[1].Captures
-                select new LyricEntry(capture.Value, content)).ToList();
+            var result = lrc.Split('\n')
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => LyricLineRegex.Matches(line))
+                .Where(matches => matches.Count >= 1)
+                .Select(matches => matches[0])
+                .Where(match => match.Groups.Count >= 3)
+                .SelectMany(match => match.Groups[1].Captures.Cast<Capture>(),
+                    (match, capture) => new LyricEntry(capture.Value, match.Groups[3].Value))
+                .ToList();
+
+            return result;
         }
 
         private static List<LyricEntry> ExpandEntries(List<LyricEntry> entries)
