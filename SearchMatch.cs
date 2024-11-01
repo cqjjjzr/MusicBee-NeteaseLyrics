@@ -47,14 +47,14 @@ namespace MusicBeePlugin
             var resultArtistsStr = string.Join(" ", resultArtists);
 
             // “距离”公式：
-            // 歌曲长度距离^2 + 标题距离 * 2 + 表演者距离 * 0.7 + 专辑距离 * 0.2
+            // 歌曲长度距离^2 + 标题距离 * 2 + 表演者距离 * 0.7 + 专辑距离 * 1
             // 因为长度是比较重要的 metrics，并且当长度差得超过一定距离的时候应该起到“一票否决”的效果，因此使用了平方
             var l = new Levenshtein();
             var durationDiff = (duration / 1000.0 - song.duration / 1000.0);
             var score = -(durationDiff * durationDiff);
             score -= l.Distance(titleWithoutArtist, song.name) * 2;
             score -= l.Distance(artistsStr, resultArtistsStr) * 0.7;
-            score -= l.Distance(album, song.album.name) * 0.2;
+            score -= l.Distance(album, song.album.name);
             return score;
         }
 
