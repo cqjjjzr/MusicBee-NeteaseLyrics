@@ -1,4 +1,4 @@
-﻿using F23.StringSimilarity;
+using F23.StringSimilarity;
 using System;
 using System.Collections.Generic;
 using System.Linq;
