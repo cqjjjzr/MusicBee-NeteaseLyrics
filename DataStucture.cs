@@ -5,6 +5,17 @@
 
 namespace MusicBeePlugin
 {
+    internal class AlbumResult
+    {
+        public int code;
+        public IEnumerable<AlbumResultSong> songs;
+    }
+
+    internal class AlbumResultSong
+    {
+        public long id;
+    }
+
     internal class SearchResult
     {
         public SearchResultResult result;

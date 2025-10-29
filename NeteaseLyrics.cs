@@ -28,6 +28,18 @@ namespace MusicBeePlugin
         public bool UseLegacyMatch { get; set; }
     }
 
+    public enum CustomTagType
+    {
+        Album, Song
+    }
+
+    public class CustomTagParseResult
+    {
+        public long Id { get; set; }
+
+        public CustomTagType Type { get; set; }
+    }
+
     public partial class Plugin
     {
         private const string ProviderName = "Netease Cloud Music(网易云音乐)";
@@ -168,7 +180,31 @@ namespace MusicBeePlugin
             var specifiedId = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.Custom10)
                               ?? _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.Custom10);
 
-            var id = TryParseNeteaseUrl(specifiedId);
+            long id = 0;
+            var result = TryParseNeteaseUrl(specifiedId);
+            if (result != null)
+            {
+                if (result.Type == CustomTagType.Song) id = result.Id;
+                else if (result.Type == CustomTagType.Album && result.Id != 0)
+                {
+                    var songList = NeteaseApi.GetAlbum(result.Id).ToList();
+                    //long.TryParse(_mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.DiscNo) ??
+                    //             _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.DiscNo), out var discNo);
+                    
+                    int.TryParse(_mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.TrackNo) ??
+                                             _mbApiInterface.NowPlaying_GetFileTag(MetaDataType.TrackNo), out var trackNo);
+
+                    //if (discNo <= 0) discNo = 1;
+                    if (trackNo <= 0) trackNo = 1;
+
+                    
+
+                    if (songList.Count >= trackNo)
+                    {
+                        id = songList[trackNo - 1]?.id ?? 0;
+                    }
+                }
+            }
             if (id == 0)
             {
                 var realTitle = _mbApiInterface.Library_GetFileTag(sourceFileUrl, MetaDataType.TrackTitle);
@@ -220,31 +256,53 @@ namespace MusicBeePlugin
             SaveSettingsInternal();
         }
 
-        private static long TryParseNeteaseUrl(string input)
+        private static CustomTagParseResult TryParseNeteaseUrl(string input)
         {
             if (input == null)
-                return 0;
+                return null;
+            if (input.StartsWith("album="))
+            {
+                input = input.Substring("album=".Length);
+                long.TryParse(input, out var id);
+                return new CustomTagParseResult { Id = id, Type = CustomTagType.Album };
+            }
             if (input.StartsWith("netease="))
             {
                 input = input.Substring("netease=".Length);
                 long.TryParse(input, out var id);
-                return id;
+                return new CustomTagParseResult { Id = id, Type = CustomTagType.Song };
             }
 
             if (!input.Contains("music.163.com"))
-                return 0;
+                return null;
 
-            var matches = Regex.Matches(input, "id=(\\d+)");
-            if (matches.Count <= 0)
-                return 0;
+            var matches = Regex.Matches(input, @"song\?id=(\d+)");
+            if (matches.Count > 0)
+            {
+                var groups = matches[0].Groups;
+                if (groups.Count <= 1)
+                    return null;
 
-            var groups = matches[0].Groups;
-            if (groups.Count <= 1)
-                return 0;
+                var idString = groups[1].Captures[0].Value;
+                long.TryParse(idString, out var id2);
+                return new CustomTagParseResult { Id = id2, Type = CustomTagType.Song };
+            }
+            else
+            {
+                matches = Regex.Matches(input, @"album\?id=(\d+)");
+                if (matches.Count > 0)
+                {
+                    var groups = matches[0].Groups;
+                    if (groups.Count <= 1)
+                        return null;
 
-            var idString = groups[1].Captures[0].Value;
-            long.TryParse(idString, out var id2);
-            return id2;
+                    var idString = groups[1].Captures[0].Value;
+                    long.TryParse(idString, out var id2);
+                    return new CustomTagParseResult { Id = id2, Type = CustomTagType.Album };
+                }
+            }
+
+            return null;
         }
 
         private static long ParseDurationString(string durationStr)

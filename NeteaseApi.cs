@@ -14,6 +14,21 @@ namespace MusicBeePlugin
      */
     internal static class NeteaseApi
     {
+        public static IEnumerable<AlbumResultSong> GetAlbum(long id)
+        {
+            var postData = new Dictionary<string, object>
+            {
+                { "csrf_token", "" },
+                { "crypto", "weapi" },
+                { "offset", 0 },
+                { "type", 1 },
+                { "limit", 20 }
+            };
+            var result = RequestNewApi<AlbumResult>($@"https://music.163.com/weapi/v1/album/{id}",
+                postData, it => it.code == 200);
+            return result == null ? Enumerable.Empty<AlbumResultSong>() : result.songs;
+        }
+
         public static IEnumerable<SearchResultSong> Search(string s)
         {
             var postData = new Dictionary<string, object>
@@ -36,19 +51,20 @@ namespace MusicBeePlugin
         {
             var postData = new Dictionary<string, object>
                     {
-                        { "OS", "pc" },
+                        { "os", "ios" },
                         { "id", id },
+                        { "cp", false },
                         { "lv", -1 },
                         { "kv", -1 },
                         { "tv", -1 },
-                        { "rv", -1 }
+                        { "rv", -1 },
                     };
             return RequestNewApi<LyricResult>(
-                @"https://music.163.com/weapi/song/lyric?csrf_token=", 
+                @"https://music.163.com/api/song/lyric?_nmclfl=1", 
                 postData, it => it.code == 200) ?? RequestLyricLegacy(id);
         }
 
-        private static T RequestNewApi<T>(string url, Dictionary<string, object> postData, Func<T, bool> checkFunc) 
+        public static T RequestNewApi<T>(string url, Dictionary<string, object> postData, Func<T, bool> checkFunc) 
             where T : class
         {
             try
