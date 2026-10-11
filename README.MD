@@ -37,3 +37,13 @@ And this plugin is also useful for people who aren't from China as Netease Cloud
 
 ## 使用
 从[度盘](https://pan.baidu.com/s/1ZL9dyrAczhPSMvMtvvG5yA?pwd=vede)下载（提取码 `vede`），并在首选项的 `插件` 中安装（“添加插件”按钮）、启用插件，在 `标签 (2)` 标签页调整歌词的提供者优先级。
+
+## Lookup reliability and development
+
+Failed or incomplete API replies return no lyrics safely. When the newer lyric interface returns no usable lyrics, the legacy HTTPS interface is tried. Requests share a bounded lookup budget, with time reserved for downloading lyrics. Missing file tags fall back to MusicBee's supplied metadata, and a Custom10 override is read from the requested file only. Desktop and phone-share song links are supported.
+
+**Allow HTTP fallback (unencrypted metadata)** defaults to enabled for compatibility with the legacy HTTP transport. HTTPS is tried first; HTTP is allowed only after a legacy HTTPS transport failure. A secure HTTP/API refusal prevents downgrade for that lookup. Disable the setting to require HTTPS. Anonymous response cookies are not replayed between requests; no login cookie is imported.
+
+MusicBee may retain previously stored or embedded lyrics. Re-fetch to evaluate a new lookup. The existing three lyric formats and matching strategies remain available.
+
+See [BUILDING.md](BUILDING.md) for the locked Windows build, regression suite and native MusicBee review checklist.
