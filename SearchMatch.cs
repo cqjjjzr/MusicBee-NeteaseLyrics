@@ -16,14 +16,14 @@ namespace MusicBeePlugin
         private static readonly Regex FeatPatternWithoutParenthesis = new Regex(@"\s+feat(.+)");
         private static readonly Regex FeatPatternWithParenthesis = new Regex(@"\s*\(feat(.+)\)");
 
-        public static long SearchAndMatch(string title, string artist, string album, long duration)
+        public static long SearchAndMatch(string title, string artist, string album, long? duration, LookupSession session)
         {
             var (titleWithoutArtist, artists) = SplitTitleArtist(title, artist);
             var artistsStr = string.Join(" ", artists);
             var results = new HashSet<SearchResultSong>(new IdOnlyEqualityComparer());
-            results.UnionWith(NeteaseApi.Search(titleWithoutArtist));
-            results.UnionWith(NeteaseApi.Search($"{titleWithoutArtist} {artistsStr}"));
-            results.UnionWith(NeteaseApi.Search($"{titleWithoutArtist} {artistsStr} {album}"));
+            results.UnionWith(NeteaseApi.Search(titleWithoutArtist.Trim(), session));
+            results.UnionWith(NeteaseApi.Search($"{titleWithoutArtist} {artistsStr}".Trim(), session));
+            results.UnionWith(NeteaseApi.Search($"{titleWithoutArtist} {artistsStr} {album}".Trim(), session));
 
             if (results.Count <= 0)
                 return 0;
@@ -38,9 +38,10 @@ namespace MusicBeePlugin
 
         private static double CalculateMatchScore(
             SearchResultSong song, string titleWithoutArtist, string artistsStr,
-            string album, long duration)
+            string album, long? duration)
         {
-            var resultArtists = song.artists.Select(it => it.name).ToList();
+            var resultArtists = (song.artists ?? new SearchResultArtist[0])
+                .Where(it => !string.IsNullOrWhiteSpace(it?.name)).Select(it => it.name).ToList();
             resultArtists.Sort();
             var resultArtistsStr = string.Join(" ", resultArtists);
 
@@ -48,11 +49,14 @@ namespace MusicBeePlugin
             // 歌曲长度距离^2 + 标题距离 * 2 + 表演者距离 * 0.7 + 专辑距离 * 1
             // 因为长度是比较重要的 metrics，并且当长度差得超过一定距离的时候应该起到“一票否决”的效果，因此使用了平方
             var l = new Levenshtein();
-            var durationDiff = (duration / 1000.0 - song.duration / 1000.0);
+            var durationDiff = duration.HasValue && song.duration > 0
+                ? (duration.Value / 1000.0 - song.duration / 1000.0) : 0;
             var score = -(durationDiff * durationDiff);
             score -= l.Distance(titleWithoutArtist, song.name) * 2;
-            score -= l.Distance(artistsStr, resultArtistsStr) * 0.7;
-            score -= l.Distance(album, song.album.name);
+            if (!string.IsNullOrWhiteSpace(artistsStr) && resultArtists.Count > 0)
+                score -= l.Distance(artistsStr, resultArtistsStr) * 0.7;
+            if (!string.IsNullOrWhiteSpace(album) && !string.IsNullOrWhiteSpace(song.album?.name))
+                score -= l.Distance(album, song.album.name);
             return score;
         }
 
@@ -81,7 +85,7 @@ namespace MusicBeePlugin
 
         private static string SanitizeString(string str)
         {
-            return str.Replace('（', '(').Replace('）', ')').Replace('\u00A0', ' ');
+            return (str ?? "").Replace('（', '(').Replace('）', ')').Replace('\u00A0', ' ');
         }
 
         private static (string, IEnumerable<string>) ExtractFeat(string str)

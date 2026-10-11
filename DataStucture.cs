@@ -5,15 +5,19 @@
 
 namespace MusicBeePlugin
 {
-    internal class SearchResult
+    internal class ApiResponse
+    {
+        public int code;
+    }
+
+    internal class SearchResult : ApiResponse
     {
         public SearchResultResult result;
-        public int code;
     }
 
     internal class SearchResultResult
     {
-        public int songCount;
+        public int? songCount;
         public IEnumerable<SearchResultSong> songs;
     }
 
@@ -38,11 +42,11 @@ namespace MusicBeePlugin
         public string name;
     }
 
-    internal class LyricResult
+    internal class LyricResult : ApiResponse
     {
+        public bool nolyric;
         public LyricInner lrc;
         public LyricInner tlyric;
-        public int code;
     }
 
     internal class LyricInner

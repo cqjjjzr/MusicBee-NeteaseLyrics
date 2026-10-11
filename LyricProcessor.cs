@@ -10,6 +10,15 @@ namespace MusicBeePlugin
     internal static class LyricProcessor
     {
         private static readonly Regex LyricLineRegex = new Regex(@"((\[.+?])+)(.*)", RegexOptions.Compiled);
+        internal static bool IsInstrumentalPlaceholder(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            var contents = text.TrimStart('\uFEFF').Split('\n')
+                .Select(line => Regex.Replace(line, @"^(?:\s*\[[^\]]*\])*\s*", ""))
+                .Select(line => Regex.Replace(line, @"[\s\p{P}]", ""))
+                .Where(line => line.Length > 0).ToArray();
+            return contents.Length > 0 && contents.All(line => line == "纯音乐请欣赏" || line == "純音樂請欣賞");
+        }
         public static string InjectTranslation(string originalLrc, string translationLrc)
         {
             var originalEntries = ExpandEntries(Parse(originalLrc));
